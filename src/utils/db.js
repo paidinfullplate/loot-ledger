@@ -70,7 +70,7 @@ function buildCampaign(row, fullItems = false) {
     items:      fullItems
                   ? (row.items || []).map(rowToItem)
                   : (row.items || []).map(i => ({ id: i.id })),
-    currency:   rowToCurrency(row.party_gold?.[0]),
+    currency:   rowToCurrency(row.party_gold),
   }
 }
 
