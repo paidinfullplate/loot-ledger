@@ -239,7 +239,9 @@ export async function deleteItem(id) {
 // silent failures from PostgREST constraint-name resolution.
 
 export async function updateCurrency(campaignId, currency) {
-  const { error } = await supabase
+  // First attempt an update. If it affected 0 rows (no seeded party_gold row
+  // — e.g. campaigns created before this migration), insert instead.
+  const { data, error } = await supabase
     .from('party_gold')
     .update({
       gold:     currency.gold,
@@ -249,6 +251,21 @@ export async function updateCurrency(campaignId, currency) {
       gems:     currency.gems,
     })
     .eq('campaign_id', campaignId)
+    .select('campaign_id')
 
   if (error) throw error
+
+  if (!data || data.length === 0) {
+    const { error: insErr } = await supabase
+      .from('party_gold')
+      .insert({
+        campaign_id: campaignId,
+        gold:        currency.gold,
+        platinum:    currency.platinum,
+        silver:      currency.silver,
+        copper:      currency.copper,
+        gems:        currency.gems,
+      })
+    if (insErr) throw insErr
+  }
 }
