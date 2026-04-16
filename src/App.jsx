@@ -6,8 +6,8 @@ import {
   createCampaign, updateCampaignMeta, deleteCampaign,
   createSession,
   createItem, updateItem, deleteItem,
-  upsertPartyGold,
-  rowToItem,
+  updateCurrency,
+  rowToItem, rowToCurrency,
 } from './utils/db'
 import Header from './components/Header'
 import CampaignList from './components/CampaignList'
@@ -126,12 +126,12 @@ export default function App() {
         },
         ({ new: newRow }) => {
           if (!newRow) return
-          const amount = parseFloat(newRow.amount) || 0
+          const currency = rowToCurrency(newRow)
           setActiveCampaign(prev =>
-            prev?.id === campaignId ? { ...prev, partyGold: amount } : prev
+            prev?.id === campaignId ? { ...prev, currency } : prev
           )
           setCampaigns(prev =>
-            prev.map(c => (c.id === campaignId ? { ...c, partyGold: amount } : c))
+            prev.map(c => (c.id === campaignId ? { ...c, currency } : c))
           )
         }
       )
@@ -201,20 +201,24 @@ export default function App() {
     }
   }
 
-  // ── Gold ─────────────────────────────────────────────────────────────────────
-  async function handleAdjustGold(delta) {
-    const newAmount = Math.max(0, (activeCampaign.partyGold || 0) + delta)
-    // Optimistic update — Realtime will confirm for other clients.
-    setActiveCampaign(prev => ({ ...prev, partyGold: newAmount }))
+  // ── Currency ──────────────────────────────────────────────────────────────────
+  async function handleAdjustCurrency(denomination, delta) {
+    const current = activeCampaign.currency
+    const newCurrency = {
+      ...current,
+      [denomination]: Math.max(0, (current[denomination] || 0) + delta),
+    }
+    // Optimistic update — Realtime confirms for other clients.
+    setActiveCampaign(prev => ({ ...prev, currency: newCurrency }))
     setCampaigns(prev =>
       prev.map(c =>
-        c.id === activeCampaign.id ? { ...c, partyGold: newAmount } : c
+        c.id === activeCampaign.id ? { ...c, currency: newCurrency } : c
       )
     )
     try {
-      await upsertPartyGold(activeCampaign.id, newAmount)
+      await updateCurrency(activeCampaign.id, newCurrency)
     } catch (e) {
-      console.error('handleAdjustGold:', e)
+      console.error('handleAdjustCurrency:', e)
     }
   }
 
@@ -348,7 +352,7 @@ export default function App() {
         <InventoryScreen
           campaign={activeCampaign}
           apiKey={apiKey}
-          onAdjustGold={handleAdjustGold}
+          onAdjustCurrency={handleAdjustCurrency}
           onDeleteItem={handleDeleteItem}
           onRevealItem={handleRevealItem}
           onSetFlavorText={handleSetFlavorText}

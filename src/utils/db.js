@@ -1,7 +1,6 @@
 import { supabase } from './supabase'
 
 // ── Row → app-shape transformers ──────────────────────────────────────────────
-// DB uses snake_case; components use camelCase.
 
 export function rowToItem(row) {
   return {
@@ -25,18 +24,29 @@ function rowToSession(row) {
   return { id: row.id, name: row.name, date: row.date }
 }
 
+export function rowToCurrency(row) {
+  if (!row) return { gold: 0, platinum: 0, silver: 0, copper: 0, gems: 0 }
+  return {
+    gold:     parseFloat(row.gold)     || 0,
+    platinum: parseFloat(row.platinum) || 0,
+    silver:   parseFloat(row.silver)   || 0,
+    copper:   parseFloat(row.copper)   || 0,
+    gems:     parseInt(row.gems)        || 0,
+  }
+}
+
 // ── Nested select strings ─────────────────────────────────────────────────────
 
-// Used for the campaign list — items is id-only so .length gives the count.
+// Campaign list — items is id-only for counting, currency gets all columns.
 const CAMPAIGN_SUMMARY_SELECT = `
   id, name, setting, created_at,
   characters ( id, name ),
   sessions   ( id, name, date ),
   items      ( id ),
-  party_gold ( amount )
+  party_gold ( gold, platinum, silver, copper, gems )
 `
 
-// Used for the inventory screen — items includes every column.
+// Inventory screen — items includes every column.
 const CAMPAIGN_FULL_SELECT = `
   id, name, setting, created_at,
   characters ( id, name ),
@@ -46,22 +56,21 @@ const CAMPAIGN_FULL_SELECT = `
     assigned_to, session_id, notes, flavor_text,
     attuned, mystery, revealed, created_at
   ),
-  party_gold ( amount )
+  party_gold ( gold, platinum, silver, copper, gems )
 `
 
-// Shared shape builder for both select widths.
 function buildCampaign(row, fullItems = false) {
   return {
     id:         row.id,
     name:       row.name,
-    setting:    row.setting    || '',
+    setting:    row.setting   || '',
     createdAt:  row.created_at,
     characters: (row.characters || []).map(c => c.name),
     sessions:   (row.sessions   || []).map(rowToSession),
     items:      fullItems
                   ? (row.items || []).map(rowToItem)
                   : (row.items || []).map(i => ({ id: i.id })),
-    partyGold:  parseFloat(row.party_gold?.[0]?.amount) || 0,
+    currency:   rowToCurrency(row.party_gold?.[0]),
   }
 }
 
@@ -89,7 +98,6 @@ export async function getCampaignById(id) {
 }
 
 export async function createCampaign({ name, setting, characters }) {
-  // 1. Insert campaign row.
   const { data: camp, error: campErr } = await supabase
     .from('campaigns')
     .insert({ name, setting: setting || null })
@@ -98,7 +106,6 @@ export async function createCampaign({ name, setting, characters }) {
 
   if (campErr) throw campErr
 
-  // 2. Insert characters (if any).
   if (characters.length > 0) {
     const { error: charErr } = await supabase
       .from('characters')
@@ -107,22 +114,22 @@ export async function createCampaign({ name, setting, characters }) {
     if (charErr) throw charErr
   }
 
-  // 3. Seed the party_gold row so it exists for Realtime and queries.
+  // Seed the party_gold row with all denominations zeroed.
   const { error: goldErr } = await supabase
     .from('party_gold')
-    .insert({ campaign_id: camp.id, amount: 0 })
+    .insert({ campaign_id: camp.id, gold: 0, platinum: 0, silver: 0, copper: 0, gems: 0 })
 
   if (goldErr) throw goldErr
 
   return {
-    id:         camp.id,
-    name:       camp.name,
-    setting:    camp.setting || '',
-    createdAt:  camp.created_at,
+    id:        camp.id,
+    name:      camp.name,
+    setting:   camp.setting || '',
+    createdAt: camp.created_at,
     characters,
-    sessions:   [],
-    items:      [],
-    partyGold:  0,
+    sessions:  [],
+    items:     [],
+    currency:  { gold: 0, platinum: 0, silver: 0, copper: 0, gems: 0 },
   }
 }
 
@@ -134,7 +141,6 @@ export async function updateCampaignMeta(id, { name, setting, characters }) {
 
   if (campErr) throw campErr
 
-  // Replace characters: delete all, then re-insert.
   const { error: delErr } = await supabase
     .from('characters')
     .delete()
@@ -152,12 +158,7 @@ export async function updateCampaignMeta(id, { name, setting, characters }) {
 }
 
 export async function deleteCampaign(id) {
-  // ON DELETE CASCADE handles all child rows.
-  const { error } = await supabase
-    .from('campaigns')
-    .delete()
-    .eq('id', id)
-
+  const { error } = await supabase.from('campaigns').delete().eq('id', id)
   if (error) throw error
 }
 
@@ -202,7 +203,6 @@ export async function createItem(campaignId, item) {
 }
 
 export async function updateItem(id, changes) {
-  // Map camelCase keys → snake_case DB columns.
   const patch = {}
   if ('name'       in changes) patch.name         = changes.name
   if ('trueName'   in changes) patch.true_name     = changes.trueName
@@ -233,12 +233,22 @@ export async function deleteItem(id) {
   if (error) throw error
 }
 
-// ── Party Gold ────────────────────────────────────────────────────────────────
+// ── Currency ──────────────────────────────────────────────────────────────────
+// Uses .update().eq() — not upsert — because the party_gold row is always
+// seeded by createCampaign, making upsert unnecessary and avoiding any
+// silent failures from PostgREST constraint-name resolution.
 
-export async function upsertPartyGold(campaignId, amount) {
+export async function updateCurrency(campaignId, currency) {
   const { error } = await supabase
     .from('party_gold')
-    .upsert({ campaign_id: campaignId, amount }, { onConflict: 'campaign_id' })
+    .update({
+      gold:     currency.gold,
+      platinum: currency.platinum,
+      silver:   currency.silver,
+      copper:   currency.copper,
+      gems:     currency.gems,
+    })
+    .eq('campaign_id', campaignId)
 
   if (error) throw error
 }

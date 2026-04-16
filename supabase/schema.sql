@@ -1,6 +1,10 @@
 -- ============================================================
 -- Loot Ledger — Supabase Schema
--- Run this entire file in the Supabase SQL Editor.
+-- Run this entire file in the Supabase SQL Editor to set up
+-- the database from scratch.
+--
+-- Already ran the old schema?  Use the MIGRATION block at the
+-- bottom of this file instead of re-running everything.
 -- ============================================================
 
 
@@ -44,10 +48,16 @@ create table items (
   created_at  timestamp default now()
 );
 
+-- One row per campaign (enforced by the UNIQUE on campaign_id).
+-- Tracks all standard D&D currency denominations plus a gem count.
 create table party_gold (
   id          uuid primary key default gen_random_uuid(),
   campaign_id uuid references campaigns(id) on delete cascade unique,
-  amount      numeric default 0
+  gold        numeric default 0,
+  platinum    numeric default 0,
+  silver      numeric default 0,
+  copper      numeric default 0,
+  gems        integer default 0
 );
 
 
@@ -76,8 +86,19 @@ create policy "public_all" on party_gold for all using (true) with check (true);
 
 
 -- ── Realtime ──────────────────────────────────────────────────────────────────
--- Enables live sync on items and party_gold for all connected clients.
--- You can also toggle these in the Supabase Dashboard → Database → Replication.
 
 alter publication supabase_realtime add table items;
 alter publication supabase_realtime add table party_gold;
+
+
+-- ============================================================
+-- MIGRATION — run this block ONLY if you already executed the
+-- previous version of this schema (which had a single `amount`
+-- column on party_gold).  Skip if starting fresh.
+-- ============================================================
+--
+-- alter table party_gold rename column amount to gold;
+-- alter table party_gold add column if not exists platinum numeric default 0;
+-- alter table party_gold add column if not exists silver   numeric default 0;
+-- alter table party_gold add column if not exists copper   numeric default 0;
+-- alter table party_gold add column if not exists gems     integer default 0;

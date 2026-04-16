@@ -7,7 +7,7 @@ import ItemCard from './ItemCard'
 export default function InventoryScreen({
   campaign,
   apiKey,
-  onAdjustGold,
+  onAdjustCurrency,
   onDeleteItem,
   onRevealItem,
   onSetFlavorText,
@@ -56,9 +56,21 @@ export default function InventoryScreen({
 
         <div className="inv-stats-bar">
           <div className="inv-stat">
-            <span className="inv-stat-label">Party Gold</span>
-            <span className="inv-stat-value gold">{(campaign.partyGold || 0).toLocaleString()} gp</span>
+            <span className="inv-stat-label">Gold</span>
+            <span className="inv-stat-value gold">{((campaign.currency || {}).gold || 0).toLocaleString()} gp</span>
           </div>
+          {((campaign.currency || {}).platinum || 0) > 0 && (
+            <div className="inv-stat">
+              <span className="inv-stat-label">Platinum</span>
+              <span className="inv-stat-value" style={{ color: '#8ab4c8' }}>{(campaign.currency.platinum || 0).toLocaleString()} pp</span>
+            </div>
+          )}
+          {((campaign.currency || {}).gems || 0) > 0 && (
+            <div className="inv-stat">
+              <span className="inv-stat-label">Gems</span>
+              <span className="inv-stat-value">{(campaign.currency.gems || 0).toLocaleString()} 💎</span>
+            </div>
+          )}
           <div className="inv-stat">
             <span className="inv-stat-label">Items</span>
             <span className="inv-stat-value">{items.length}</span>
@@ -82,9 +94,9 @@ export default function InventoryScreen({
       <div className="inv-body">
         <aside className="sidebar">
           <GoldPanel
-            partyGold={campaign.partyGold || 0}
+            currency={campaign.currency}
             characters={campaign.characters || []}
-            onAdjustGold={onAdjustGold}
+            onAdjustCurrency={onAdjustCurrency}
           />
           <FilterPanel
             characters={campaign.characters || []}

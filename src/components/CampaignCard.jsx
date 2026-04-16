@@ -1,5 +1,6 @@
 export default function CampaignCard({ campaign, onOpen }) {
-  const totalGp = campaign.partyGold || 0
+  const c = campaign.currency || {}
+  const totalGp = (c.gold || 0) + (c.platinum || 0) * 10 + (c.silver || 0) * 0.1 + (c.copper || 0) * 0.01
   const itemCount = (campaign.items || []).length
   const sessions = campaign.sessions || []
   const lastSession = sessions[sessions.length - 1]
@@ -21,8 +22,8 @@ export default function CampaignCard({ campaign, onOpen }) {
           <span className="stat-chip-value">{itemCount}</span>
         </div>
         <div className="stat-chip">
-          <span className="stat-chip-label">Party Gold</span>
-          <span className="stat-chip-value gold-value">{totalGp.toLocaleString()} gp</span>
+          <span className="stat-chip-label">Wealth (gp eq.)</span>
+          <span className="stat-chip-value gold-value">{Math.floor(totalGp).toLocaleString()} gp</span>
         </div>
         <div className="stat-chip">
           <span className="stat-chip-label">Sessions</span>
