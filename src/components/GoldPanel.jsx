@@ -140,7 +140,7 @@ export default function GoldPanel({
         <div className="panel-body">
           {showAddGem && (
             <div className="add-gem-form">
-              <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.5rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginBottom: '0.5rem' }}>
                 <input
                   type="text"
                   className="form-input"
@@ -148,17 +148,15 @@ export default function GoldPanel({
                   value={gemName}
                   onChange={e => setGemName(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') submitAddGem() }}
-                  style={{ flex: 2 }}
                   autoFocus
                 />
                 <input
                   type="number"
                   className="form-input"
-                  placeholder="Value (gp)"
+                  placeholder="Value in gp (e.g. 300)"
                   value={gemValue}
                   onChange={e => setGemValue(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') submitAddGem() }}
-                  style={{ flex: 1 }}
                   min="0"
                 />
               </div>
