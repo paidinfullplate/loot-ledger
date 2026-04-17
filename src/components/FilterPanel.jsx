@@ -21,7 +21,7 @@ export default function FilterPanel({ characters, sessions, filters, onFilterCha
           >
             <option value="">All owners</option>
             <option>Party</option>
-            {characters.map(c => <option key={c}>{c}</option>)}
+            {characters.map(c => <option key={c.id || c.name} value={c.name}>{c.name}</option>)}
           </select>
 
           <label className="filter-label" style={{ marginTop: '0.4rem' }}>Rarity</label>

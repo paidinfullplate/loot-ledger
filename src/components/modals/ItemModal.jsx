@@ -114,7 +114,7 @@ export default function ItemModal({ isOpen, onClose, onSave, characters, session
             onChange={e => set('assignedTo', e.target.value)}
           >
             <option>Party</option>
-            {characters.map(c => <option key={c}>{c}</option>)}
+            {characters.map(c => <option key={c.id || c.name} value={c.name}>{c.name}</option>)}
           </select>
         </div>
         <div className="form-group">

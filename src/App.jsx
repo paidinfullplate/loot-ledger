@@ -6,8 +6,9 @@ import {
   createCampaign, updateCampaignMeta, deleteCampaign,
   createSession,
   createItem, updateItem, deleteItem,
-  updateCurrency,
-  rowToItem, rowToCurrency,
+  updateCurrency, updateCharacterCurrency, applyPartySplit,
+  createGem, deleteGem, assignGem,
+  rowToItem, rowToCurrency, rowToGem,
 } from './utils/db'
 import Header from './components/Header'
 import CampaignList from './components/CampaignList'
@@ -18,22 +19,16 @@ import SessionModal from './components/modals/SessionModal'
 import SettingsModal from './components/modals/SettingsModal'
 
 export default function App() {
-  // Campaign list (summary shapes — items array is id-only for counting)
   const [campaigns, setCampaigns] = useState([])
   const [campaignsLoading, setCampaignsLoading] = useState(true)
-
-  // Active campaign (full shape — items include all columns)
   const [activeCampaign, setActiveCampaign] = useState(null)
   const [campaignLoading, setCampaignLoading] = useState(false)
-
-  const [openModal, setOpenModal] = useState(null) // 'campaign'|'item'|'session'|'settings'
+  const [openModal, setOpenModal] = useState(null)
   const [apiKey, setApiKey] = useState(() => localStorage.getItem(API_KEY_KEY) || '')
   const [dbError, setDbError] = useState(null)
 
-  // ── Initial load ────────────────────────────────────────────────────────────
-  useEffect(() => {
-    loadCampaigns()
-  }, [])
+  // ── Initial load ─────────────────────────────────────────────────────────────
+  useEffect(() => { loadCampaigns() }, [])
 
   async function loadCampaigns() {
     setCampaignsLoading(true)
@@ -48,102 +43,95 @@ export default function App() {
     }
   }
 
-  // ── Realtime subscriptions ──────────────────────────────────────────────────
-  // Subscribe to items + party_gold whenever a campaign is open.
-  // Unsubscribes automatically when the campaign changes or is closed.
+  // ── Realtime subscriptions ────────────────────────────────────────────────────
   useEffect(() => {
     if (!activeCampaign) return
-
     const campaignId = activeCampaign.id
 
     const channel = supabase
       .channel(`loot:${campaignId}`)
 
-      // Items — INSERT / UPDATE / DELETE
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'items',
-          filter: `campaign_id=eq.${campaignId}`,
-        },
-        ({ eventType, new: newRow, old: oldRow }) => {
-          setActiveCampaign(prev => {
-            if (!prev || prev.id !== campaignId) return prev
+      // Items
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'items',
+        filter: `campaign_id=eq.${campaignId}`,
+      }, ({ eventType, new: newRow, old: oldRow }) => {
+        setActiveCampaign(prev => {
+          if (!prev || prev.id !== campaignId) return prev
+          if (eventType === 'INSERT')
+            return { ...prev, items: [...prev.items.filter(i => i.id !== newRow.id), rowToItem(newRow)] }
+          if (eventType === 'UPDATE')
+            return { ...prev, items: prev.items.map(i => i.id === newRow.id ? rowToItem(newRow) : i) }
+          if (eventType === 'DELETE')
+            return { ...prev, items: prev.items.filter(i => i.id !== oldRow.id) }
+          return prev
+        })
+        setCampaigns(prev => prev.map(c => {
+          if (c.id !== campaignId) return c
+          let items = [...c.items]
+          if (eventType === 'INSERT') items = [...items.filter(i => i.id !== newRow.id), { id: newRow.id }]
+          if (eventType === 'DELETE') items = items.filter(i => i.id !== oldRow.id)
+          return { ...c, items }
+        }))
+      })
 
-            if (eventType === 'INSERT') {
-              // De-dupe: if the optimistic insert is already present, replace it
-              // with the server-confirmed row; otherwise add it (remote client).
-              return {
-                ...prev,
-                items: [
-                  ...prev.items.filter(i => i.id !== newRow.id),
-                  rowToItem(newRow),
-                ],
-              }
-            }
-            if (eventType === 'UPDATE') {
-              return {
-                ...prev,
-                items: prev.items.map(i =>
-                  i.id === newRow.id ? rowToItem(newRow) : i
-                ),
-              }
-            }
-            if (eventType === 'DELETE') {
-              return {
-                ...prev,
-                items: prev.items.filter(i => i.id !== oldRow.id),
-              }
-            }
-            return prev
-          })
+      // Party gold
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'party_gold',
+        filter: `campaign_id=eq.${campaignId}`,
+      }, ({ new: newRow }) => {
+        if (!newRow) return
+        const currency = rowToCurrency(newRow)
+        setActiveCampaign(prev => prev?.id === campaignId ? { ...prev, currency } : prev)
+        setCampaigns(prev => prev.map(c => c.id === campaignId ? { ...c, currency } : c))
+      })
 
-          // Keep the campaign-list item count in sync.
-          setCampaigns(prev =>
-            prev.map(c => {
-              if (c.id !== campaignId) return c
-              let items = [...c.items]
-              if (eventType === 'INSERT')
-                items = [...items.filter(i => i.id !== newRow.id), { id: newRow.id }]
-              if (eventType === 'DELETE')
-                items = items.filter(i => i.id !== oldRow.id)
-              return { ...c, items }
-            })
-          )
-        }
-      )
+      // Gems
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'gems',
+        filter: `campaign_id=eq.${campaignId}`,
+      }, ({ eventType, new: newRow, old: oldRow }) => {
+        setActiveCampaign(prev => {
+          if (!prev || prev.id !== campaignId) return prev
+          const gems = prev.gems || []
+          if (eventType === 'INSERT')
+            return { ...prev, gems: [...gems.filter(g => g.id !== newRow.id), rowToGem(newRow)] }
+          if (eventType === 'UPDATE')
+            return { ...prev, gems: gems.map(g => g.id === newRow.id ? rowToGem(newRow) : g) }
+          if (eventType === 'DELETE')
+            return { ...prev, gems: gems.filter(g => g.id !== oldRow.id) }
+          return prev
+        })
+      })
 
-      // Party gold — any change (INSERT on first seed, UPDATE on adjustments)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'party_gold',
-          filter: `campaign_id=eq.${campaignId}`,
-        },
-        ({ new: newRow }) => {
-          if (!newRow) return
-          const currency = rowToCurrency(newRow)
-          setActiveCampaign(prev =>
-            prev?.id === campaignId ? { ...prev, currency } : prev
-          )
-          setCampaigns(prev =>
-            prev.map(c => (c.id === campaignId ? { ...c, currency } : c))
-          )
-        }
-      )
+      // Character currency (from other clients)
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'public', table: 'characters',
+        filter: `campaign_id=eq.${campaignId}`,
+      }, ({ new: newRow }) => {
+        setActiveCampaign(prev => {
+          if (!prev) return prev
+          return {
+            ...prev,
+            characters: prev.characters.map(c =>
+              c.id === newRow.id
+                ? { ...c,
+                    gold:     parseFloat(newRow.gold)     || 0,
+                    platinum: parseFloat(newRow.platinum) || 0,
+                    silver:   parseFloat(newRow.silver)   || 0,
+                    copper:   parseFloat(newRow.copper)   || 0 }
+                : c
+            ),
+          }
+        })
+      })
 
       .subscribe()
 
-    return () => {
-      supabase.removeChannel(channel)
-    }
+    return () => { supabase.removeChannel(channel) }
   }, [activeCampaign?.id])
 
-  // ── Navigation ──────────────────────────────────────────────────────────────
+  // ── Navigation ───────────────────────────────────────────────────────────────
   async function handleOpenCampaign(id) {
     setCampaignLoading(true)
     setDbError(null)
@@ -157,11 +145,9 @@ export default function App() {
     }
   }
 
-  function handleBack() {
-    setActiveCampaign(null)
-  }
+  function handleBack() { setActiveCampaign(null) }
 
-  // ── Campaign CRUD ────────────────────────────────────────────────────────────
+  // ── Campaign CRUD ─────────────────────────────────────────────────────────────
   async function handleCreateCampaign({ name, setting, characters }) {
     try {
       const camp = await createCampaign({ name, setting, characters })
@@ -175,13 +161,17 @@ export default function App() {
 
   async function handleSaveSettings({ name, setting, characters }) {
     try {
-      await updateCampaignMeta(activeCampaign.id, { name, setting, characters })
-      setActiveCampaign(prev => ({ ...prev, name, setting, characters }))
-      setCampaigns(prev =>
-        prev.map(c =>
-          c.id === activeCampaign.id ? { ...c, name, setting, characters } : c
-        )
+      await updateCampaignMeta(
+        activeCampaign.id,
+        { name, setting, characters },
+        activeCampaign.characters,
       )
+      // Reload to get fresh IDs for any newly added characters
+      const refreshed = await getCampaignById(activeCampaign.id)
+      setActiveCampaign(refreshed)
+      setCampaigns(prev => prev.map(c =>
+        c.id === activeCampaign.id ? { ...c, name, setting, characters: refreshed.characters } : c
+      ))
       setOpenModal(null)
     } catch (e) {
       console.error('handleSaveSettings:', e)
@@ -201,20 +191,17 @@ export default function App() {
     }
   }
 
-  // ── Currency ──────────────────────────────────────────────────────────────────
+  // ── Party currency ────────────────────────────────────────────────────────────
   async function handleAdjustCurrency(denomination, delta) {
     const current = activeCampaign.currency
     const newCurrency = {
       ...current,
       [denomination]: Math.max(0, (current[denomination] || 0) + delta),
     }
-    // Optimistic update — Realtime confirms for other clients.
     setActiveCampaign(prev => ({ ...prev, currency: newCurrency }))
-    setCampaigns(prev =>
-      prev.map(c =>
-        c.id === activeCampaign.id ? { ...c, currency: newCurrency } : c
-      )
-    )
+    setCampaigns(prev => prev.map(c =>
+      c.id === activeCampaign.id ? { ...c, currency: newCurrency } : c
+    ))
     try {
       await updateCurrency(activeCampaign.id, newCurrency)
     } catch (e) {
@@ -222,19 +209,87 @@ export default function App() {
     }
   }
 
+  async function handleApplyPartySplit(newPartyCurrency, characterUpdates) {
+    setActiveCampaign(prev => ({
+      ...prev,
+      currency: newPartyCurrency,
+      characters: prev.characters.map(char => {
+        const upd = characterUpdates.find(u => u.id === char.id)
+        return upd ? { ...char, ...upd.currency } : char
+      }),
+    }))
+    setCampaigns(prev => prev.map(c =>
+      c.id === activeCampaign.id ? { ...c, currency: newPartyCurrency } : c
+    ))
+    try {
+      await applyPartySplit(activeCampaign.id, newPartyCurrency, characterUpdates)
+    } catch (e) {
+      console.error('handleApplyPartySplit:', e)
+    }
+  }
+
+  // ── Character currency ────────────────────────────────────────────────────────
+  async function handleAdjustCharacterCurrency(characterId, denomination, delta) {
+    const char = activeCampaign.characters.find(c => c.id === characterId)
+    if (!char) return
+    const newCurrency = {
+      platinum: char.platinum || 0,
+      gold:     char.gold     || 0,
+      silver:   char.silver   || 0,
+      copper:   char.copper   || 0,
+      [denomination]: Math.max(0, (char[denomination] || 0) + delta),
+    }
+    setActiveCampaign(prev => ({
+      ...prev,
+      characters: prev.characters.map(c => c.id === characterId ? { ...c, ...newCurrency } : c),
+    }))
+    try {
+      await updateCharacterCurrency(characterId, newCurrency)
+    } catch (e) {
+      console.error('handleAdjustCharacterCurrency:', e)
+    }
+  }
+
+  // ── Gems ──────────────────────────────────────────────────────────────────────
+  async function handleAddGem(gemData) {
+    try {
+      const gem = await createGem(activeCampaign.id, gemData)
+      setActiveCampaign(prev => ({ ...prev, gems: [...(prev.gems || []), gem] }))
+    } catch (e) {
+      console.error('handleAddGem:', e)
+      alert('Failed to add gem.')
+    }
+  }
+
+  async function handleDeleteGem(gemId) {
+    setActiveCampaign(prev => ({ ...prev, gems: prev.gems.filter(g => g.id !== gemId) }))
+    try {
+      await deleteGem(gemId)
+    } catch (e) {
+      console.error('handleDeleteGem:', e)
+    }
+  }
+
+  async function handleAssignGem(gemId, assignedTo) {
+    setActiveCampaign(prev => ({
+      ...prev,
+      gems: prev.gems.map(g => g.id === gemId ? { ...g, assignedTo: assignedTo || null } : g),
+    }))
+    try {
+      await assignGem(gemId, assignedTo)
+    } catch (e) {
+      console.error('handleAssignGem:', e)
+    }
+  }
+
   // ── Items ─────────────────────────────────────────────────────────────────────
   async function handleAddItem(itemData) {
     try {
       const item = await createItem(activeCampaign.id, itemData)
-      // Realtime INSERT will also fire, but de-duplication in the handler is safe.
       setActiveCampaign(prev => ({ ...prev, items: [...prev.items, item] }))
-      setCampaigns(prev =>
-        prev.map(c =>
-          c.id === activeCampaign.id
-            ? { ...c, items: [...c.items, { id: item.id }] }
-            : c
-        )
-      )
+      setCampaigns(prev => prev.map(c =>
+        c.id === activeCampaign.id ? { ...c, items: [...c.items, { id: item.id }] } : c
+      ))
       setOpenModal(null)
     } catch (e) {
       console.error('handleAddItem:', e)
@@ -243,11 +298,7 @@ export default function App() {
   }
 
   async function handleDeleteItem(itemId) {
-    // Optimistic removal.
-    setActiveCampaign(prev => ({
-      ...prev,
-      items: prev.items.filter(i => i.id !== itemId),
-    }))
+    setActiveCampaign(prev => ({ ...prev, items: prev.items.filter(i => i.id !== itemId) }))
     try {
       await deleteItem(itemId)
     } catch (e) {
@@ -259,12 +310,9 @@ export default function App() {
     const item = activeCampaign.items.find(i => i.id === itemId)
     if (!item) return
     const name = item.trueName || item.name
-    // Optimistic.
     setActiveCampaign(prev => ({
       ...prev,
-      items: prev.items.map(i =>
-        i.id === itemId ? { ...i, revealed: true, name } : i
-      ),
+      items: prev.items.map(i => i.id === itemId ? { ...i, revealed: true, name } : i),
     }))
     try {
       await updateItem(itemId, { revealed: true, name })
@@ -274,12 +322,9 @@ export default function App() {
   }
 
   async function handleSetFlavorText(itemId, text) {
-    // Optimistic.
     setActiveCampaign(prev => ({
       ...prev,
-      items: prev.items.map(i =>
-        i.id === itemId ? { ...i, flavorText: text } : i
-      ),
+      items: prev.items.map(i => i.id === itemId ? { ...i, flavorText: text } : i),
     }))
     try {
       await updateItem(itemId, { flavorText: text })
@@ -292,17 +337,10 @@ export default function App() {
   async function handleAddSession({ name, date }) {
     try {
       const session = await createSession(activeCampaign.id, { name, date })
-      setActiveCampaign(prev => ({
-        ...prev,
-        sessions: [...prev.sessions, session],
-      }))
-      setCampaigns(prev =>
-        prev.map(c =>
-          c.id === activeCampaign.id
-            ? { ...c, sessions: [...c.sessions, session] }
-            : c
-        )
-      )
+      setActiveCampaign(prev => ({ ...prev, sessions: [...prev.sessions, session] }))
+      setCampaigns(prev => prev.map(c =>
+        c.id === activeCampaign.id ? { ...c, sessions: [...c.sessions, session] } : c
+      ))
       setOpenModal(null)
     } catch (e) {
       console.error('handleAddSession:', e)
@@ -310,7 +348,7 @@ export default function App() {
     }
   }
 
-  // ── API key (stays in localStorage — not a backend concern) ──────────────────
+  // ── API key ───────────────────────────────────────────────────────────────────
   function handleSaveApiKey(key) {
     key ? localStorage.setItem(API_KEY_KEY, key) : localStorage.removeItem(API_KEY_KEY)
     setApiKey(key)
@@ -325,43 +363,44 @@ export default function App() {
 
       {dbError && (
         <div style={{
-          background: 'rgba(139,26,26,0.15)',
-          border: '1px solid rgba(139,26,26,0.4)',
-          color: '#c04040',
+          background: 'rgba(248,113,113,0.1)',
+          border: '1px solid rgba(248,113,113,0.3)',
+          color: 'var(--danger)',
           padding: '0.75rem 2rem',
           fontSize: '0.9rem',
-          fontStyle: 'italic',
         }}>
           {dbError}
         </div>
       )}
 
       {!inInventory ? (
-        campaignsLoading ? (
-          <LoadingPane message="Loading campaigns…" />
-        ) : (
-          <CampaignList
-            campaigns={campaigns}
-            onOpenCampaign={handleOpenCampaign}
-            onNewCampaign={() => setOpenModal('campaign')}
+        campaignsLoading
+          ? <LoadingPane message="Loading campaigns…" />
+          : <CampaignList
+              campaigns={campaigns}
+              onOpenCampaign={handleOpenCampaign}
+              onNewCampaign={() => setOpenModal('campaign')}
+            />
+      ) : campaignLoading
+        ? <LoadingPane message="Opening campaign…" />
+        : <InventoryScreen
+            campaign={activeCampaign}
+            apiKey={apiKey}
+            onAdjustCurrency={handleAdjustCurrency}
+            onApplyPartySplit={handleApplyPartySplit}
+            onAdjustCharacterCurrency={handleAdjustCharacterCurrency}
+            onAddGem={handleAddGem}
+            onDeleteGem={handleDeleteGem}
+            onAssignGem={handleAssignGem}
+            onDeleteItem={handleDeleteItem}
+            onRevealItem={handleRevealItem}
+            onSetFlavorText={handleSetFlavorText}
+            onSaveApiKey={handleSaveApiKey}
+            onOpenItemModal={() => setOpenModal('item')}
+            onOpenSessionModal={() => setOpenModal('session')}
+            onOpenSettings={() => setOpenModal('settings')}
           />
-        )
-      ) : campaignLoading ? (
-        <LoadingPane message="Opening campaign…" />
-      ) : (
-        <InventoryScreen
-          campaign={activeCampaign}
-          apiKey={apiKey}
-          onAdjustCurrency={handleAdjustCurrency}
-          onDeleteItem={handleDeleteItem}
-          onRevealItem={handleRevealItem}
-          onSetFlavorText={handleSetFlavorText}
-          onSaveApiKey={handleSaveApiKey}
-          onOpenItemModal={() => setOpenModal('item')}
-          onOpenSessionModal={() => setOpenModal('session')}
-          onOpenSettings={() => setOpenModal('settings')}
-        />
-      )}
+      }
 
       <CampaignModal
         isOpen={openModal === 'campaign'}
@@ -400,14 +439,11 @@ export default function App() {
 function LoadingPane({ message }) {
   return (
     <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      minHeight: 'calc(100vh - 64px)',
-      color: 'var(--ink-faint)',
-      fontFamily: "'Cinzel', serif",
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      minHeight: 'calc(100vh - 60px)',
+      color: 'var(--text-faint)',
       fontSize: '0.85rem',
-      letterSpacing: '0.15em',
+      letterSpacing: '0.12em',
       textTransform: 'uppercase',
     }}>
       {message}

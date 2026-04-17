@@ -3,11 +3,17 @@ import GoldPanel from './GoldPanel'
 import FilterPanel from './FilterPanel'
 import ApiKeyPanel from './ApiKeyPanel'
 import ItemCard from './ItemCard'
+import CharacterWallets from './CharacterWallets'
 
 export default function InventoryScreen({
   campaign,
   apiKey,
   onAdjustCurrency,
+  onApplyPartySplit,
+  onAdjustCharacterCurrency,
+  onAddGem,
+  onDeleteGem,
+  onAssignGem,
   onDeleteItem,
   onRevealItem,
   onSetFlavorText,
@@ -65,10 +71,10 @@ export default function InventoryScreen({
               <span className="inv-stat-value" style={{ color: '#8ab4c8' }}>{(campaign.currency.platinum || 0).toLocaleString()} pp</span>
             </div>
           )}
-          {((campaign.currency || {}).gems || 0) > 0 && (
+          {(campaign.gems || []).filter(g => !g.assignedTo).length > 0 && (
             <div className="inv-stat">
               <span className="inv-stat-label">Gems</span>
-              <span className="inv-stat-value">{(campaign.currency.gems || 0).toLocaleString()} 💎</span>
+              <span className="inv-stat-value">{campaign.gems.filter(g => !g.assignedTo).length} 💎</span>
             </div>
           )}
           <div className="inv-stat">
@@ -96,7 +102,18 @@ export default function InventoryScreen({
           <GoldPanel
             currency={campaign.currency}
             characters={campaign.characters || []}
+            gems={campaign.gems || []}
             onAdjustCurrency={onAdjustCurrency}
+            onAddGem={onAddGem}
+            onDeleteGem={onDeleteGem}
+            onAssignGem={onAssignGem}
+            onApplyPartySplit={onApplyPartySplit}
+          />
+          <CharacterWallets
+            characters={campaign.characters || []}
+            items={campaign.items || []}
+            gems={campaign.gems || []}
+            onAdjustCharacterCurrency={onAdjustCharacterCurrency}
           />
           <FilterPanel
             characters={campaign.characters || []}

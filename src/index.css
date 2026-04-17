@@ -790,3 +790,185 @@ select option { background: #1a1728; color: #ede9fe; }
   padding: 0.3rem 0.5rem !important;
   font-size: 0.9rem !important;
 }
+
+/* ── Character Wallets ── */
+.char-wallet {
+  border-bottom: 1px solid var(--border);
+}
+.char-wallet:last-child { border-bottom: none; }
+
+.char-wallet-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1rem;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+}
+.char-wallet-header:hover { background: var(--bg-surface); }
+
+.char-wallet-name {
+  font-weight: 600;
+  font-size: 0.88rem;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.char-wallet-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.1rem;
+}
+
+.char-wallet-toggle {
+  font-size: 0.7rem;
+  color: var(--text-faint);
+  margin-left: 0.25rem;
+}
+
+.char-wallet-body {
+  padding: 0.5rem 1rem 0.75rem;
+  background: var(--bg-deep);
+  border-top: 1px solid var(--border);
+}
+
+.char-currency-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+}
+
+.char-currency-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  width: 2rem;
+  flex-shrink: 0;
+}
+
+.char-currency-value {
+  font-size: 0.95rem;
+  font-weight: 600;
+  min-width: 3.5rem;
+  text-align: right;
+}
+
+.char-currency-controls {
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+  margin-left: auto;
+}
+
+.char-currency-controls .currency-input {
+  width: 4rem;
+  flex: none;
+}
+
+.char-wallet-section {
+  margin-top: 0.6rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.char-wallet-section-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-bottom: 0.35rem;
+}
+
+.char-wallet-gem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.2rem 0;
+  font-size: 0.82rem;
+}
+
+.char-wallet-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.2rem 0;
+  font-size: 0.82rem;
+}
+
+.char-wallet-item-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Gems panel ── */
+.gem-section-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-bottom: 0.3rem;
+}
+
+.gem-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.gem-row:last-child { border-bottom: none; }
+
+.gem-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.gem-name {
+  font-size: 0.88rem;
+  font-weight: 500;
+}
+
+.gem-value {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--violet);
+}
+
+.gem-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.gem-assign-select {
+  flex: 1;
+  background: var(--bg-raise);
+  border: 1px solid var(--border-mid);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.78rem;
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+}
+.gem-assign-select:focus {
+  outline: none;
+  border-color: var(--violet);
+}
+
+.add-gem-form {
+  padding: 0.5rem 0 0.75rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 0.5rem;
+}

@@ -11,7 +11,7 @@ export default function SettingsModal({ isOpen, onClose, onSave, onDelete, campa
     if (isOpen && campaign) {
       setName(campaign.name || '')
       setSetting(campaign.setting || '')
-      setCharacters([...(campaign.characters || [])])
+      setCharacters((campaign.characters || []).map(c => c.name || c))
       setCharInput('')
     }
   }, [isOpen, campaign])
